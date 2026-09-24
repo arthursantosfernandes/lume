@@ -45,12 +45,12 @@ export default function InicioPage() {
             {pacientes.length === 0 ? "Nenhuma paciente cadastrada ainda." : "Nenhum resultado."}
           </p>
         ) : (
-          <ul className="divide-y divide-black/5 overflow-hidden rounded-2xl bg-white shadow-sm">
+          <ul className="lista-animada divide-y divide-black/5 overflow-hidden rounded-2xl bg-white shadow-sm">
             {filtrados.map((p) => {
               const idade = calcularIdade(p.data_nascimento);
               return (
                 <li key={p.id}>
-                  <Link href={`/pacientes/${p.id}`} className="flex items-center gap-3 px-4 py-4 hover:bg-salvia-claro/50">
+                  <Link href={`/pacientes/${p.id}`} className="flex items-center gap-3 px-4 py-4 transition-colors hover:bg-salvia-claro/50 active:bg-salvia-claro">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-salvia-claro font-semibold text-salvia-escuro">
                       {p.nome.charAt(0).toUpperCase()}
                     </span>

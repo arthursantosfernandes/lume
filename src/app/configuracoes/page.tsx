@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { useProfissional, credencialPrincipal } from "@/lib/useProfissional";
+import { useProfissional, useSessao, credencialPrincipal } from "@/lib/useProfissional";
 import { PROFISSOES, UFS, capitalizarNome, mascaraCEP, mascaraTelefone } from "@/lib/utils";
 import { Topo } from "@/components/Topo";
 import { Carregando } from "@/components/Carregando";
+import { ConfigSeguranca } from "@/components/ConfigSeguranca";
 
 type Clinica = {
   nome: string; documento: string; telefone: string; email: string; cep: string; endereco: string;
@@ -19,6 +20,7 @@ const VAZIA: Clinica = {
 
 export default function ConfiguracoesPage() {
   const { profissional, carregando } = useProfissional();
+  const { recarregar } = useSessao();
   const [clinica, setClinica] = useState<Clinica>(VAZIA);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [prof, setProf] = useState({ nome: "", telefone: "" });
@@ -106,6 +108,7 @@ export default function ConfiguracoesPage() {
     setSalvando(false);
     const falha = r1.error || r2.error || r3.error;
     if (falha) return setErro(falha.message);
+    await recarregar();
     setMsg("Alterações salvas!");
   }
 
@@ -235,6 +238,8 @@ export default function ConfiguracoesPage() {
           {msg && <p className="rounded-lg bg-salvia-claro p-3 text-sm">{msg}</p>}
           <button className="botao" disabled={salvando}>{salvando ? "Salvando…" : "Salvar alterações"}</button>
         </form>
+
+        <ConfigSeguranca profissional={profissional} />
       </main>
     </>
   );

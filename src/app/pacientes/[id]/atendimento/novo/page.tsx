@@ -51,6 +51,7 @@ export default function NovoAtendimentoPage() {
   const [dados, setDados] = useState<Dados>({});
   const [mapa, setMapa] = useState<Marcacao[]>([]);
   const [erro, setErro] = useState("");
+  const [tcleAssinado, setTcleAssinado] = useState<boolean | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -89,10 +90,18 @@ export default function NovoAtendimentoPage() {
       setComum({ ...comum, [k]: e.target.value }),
   });
 
-  function escolher(t: Template) {
+  async function escolher(t: Template) {
     setTemplate(t);
     setDados({});
     setMapa([]);
+    // Verifica se o TCLE deste procedimento já foi assinado
+    setTcleAssinado(null);
+    const { count } = await supabase
+      .from("consents")
+      .select("id", { count: "exact", head: true })
+      .eq("patient_id", pacienteId).eq("tipo", "procedimento").eq("procedure_template_id", t.id)
+      .eq("aceito", true).is("revogado_em", null);
+    setTcleAssinado((count ?? 0) > 0);
   }
 
   async function salvar(e: React.FormEvent) {
@@ -187,6 +196,20 @@ export default function NovoAtendimentoPage() {
               <span className="font-semibold">{template.nome}</span>
               <button type="button" className="text-sm underline" onClick={() => setTemplate(null)}>Trocar</button>
             </div>
+
+            {tcleAssinado === false && (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-semibold">⚠ TCLE deste procedimento ainda não foi assinado</p>
+                <p className="mb-2">Colete a assinatura da paciente antes de realizar o procedimento.</p>
+                <a href={`/pacientes/${pacienteId}?aba=termos`} target="_blank" rel="noreferrer"
+                  className="font-medium underline">
+                  Abrir aba Termos para coletar a assinatura ↗
+                </a>
+              </div>
+            )}
+            {tcleAssinado === true && (
+              <p className="rounded-xl bg-salvia-claro/70 px-4 py-2 text-sm">✅ TCLE deste procedimento assinado</p>
+            )}
 
             <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
               <div>

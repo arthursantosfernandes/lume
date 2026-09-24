@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { sair as encerrarSessao } from "@/lib/seguranca";
 
 export function Topo({ titulo, voltar }: { titulo: string; voltar?: string }) {
   const router = useRouter();
 
   async function sair() {
-    await supabase.auth.signOut();
+    await encerrarSessao();
     router.replace("/login");
   }
 

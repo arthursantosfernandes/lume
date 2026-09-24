@@ -81,12 +81,14 @@ export function MapaFacial({
   unidade = "U",
   somenteLeitura = false,
   croqui = "desenho",
+  compacto = false,
 }: {
   marcacoes: Marcacao[];
   onChange?: (m: Marcacao[]) => void;
   unidade?: string;
   somenteLeitura?: boolean;
   croqui?: Croqui;
+  compacto?: boolean; // impressão: esconde a lista ponto a ponto, mostra só os totais
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
@@ -218,7 +220,7 @@ export function MapaFacial({
       )}
 
       {/* Lista numerada (visualização) */}
-      {somenteLeitura && marcacoes.length > 0 && (
+      {somenteLeitura && !compacto && marcacoes.length > 0 && (
         <ol className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           {marcacoes.map((m, i) => (
             <li key={m.id} className="flex justify-between">

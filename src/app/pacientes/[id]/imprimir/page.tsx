@@ -9,6 +9,7 @@ import { calcularIdade, formatarData, formatarDataHora, mascaraCPF, mascaraTelef
 import { Carregando } from "@/components/Carregando";
 import { MapaFacial, type Croqui, type Marcacao } from "@/components/MapaFacial";
 import { exibirValor, unidadeDoMapa, type Campo, type Template } from "@/components/CamposProcedimento";
+import { ROTULOS, nomeMotivo, valorLegivel, type Retificacao } from "@/components/Retificacoes";
 
 /**
  * Prontuário para impressão / PDF.
@@ -49,14 +50,14 @@ export default function ImprimirPage() {
   const { profissional, carregando } = useProfissional();
   const [d, setD] = useState<{
     clinica: Dado; logo: string | null; paciente: Dado; anamnese: Dado | null;
-    termos: Dado[]; atendimentos: Dado[]; fotos: Dado[];
+    termos: Dado[]; atendimentos: Dado[]; fotos: Dado[]; retificacoes: Retificacao[];
   } | null>(null);
   const [inc, setInc] = useState({ anamnese: true, atendimentos: true, termos: true, fotos: false });
 
   useEffect(() => {
     if (!profissional) return;
     (async () => {
-      const [cli, pac, ana, ter, ate, fot] = await Promise.all([
+      const [cli, pac, ana, ter, ate, fot, ret] = await Promise.all([
         supabase.from("clinics").select("*").eq("id", profissional.clinic_id).maybeSingle(),
         supabase.from("patients").select("*").eq("id", id).maybeSingle(),
         supabase.from("anamneses").select("*").eq("patient_id", id).order("created_at", { ascending: false }).limit(1),
@@ -65,6 +66,7 @@ export default function ImprimirPage() {
           .select("*, procedure_templates(id, slug, nome, categoria, tipo_mapa, tipo_marcacao, campos), professionals(nome), professional_credentials(conselho, numero_registro, uf)")
           .eq("patient_id", id).order("data_atendimento"),
         supabase.from("photos").select("*").eq("patient_id", id).order("tirada_em"),
+        supabase.from("retificacoes").select("*").eq("patient_id", id).order("created_at"),
       ]);
       let logo: string | null = null;
       if (cli.data?.logo_path) {
@@ -78,7 +80,7 @@ export default function ImprimirPage() {
       }
       setD({
         clinica: cli.data ?? {}, logo, paciente: pac.data ?? {}, anamnese: ana.data?.[0] ?? null,
-        termos: ter.data ?? [], atendimentos: ate.data ?? [], fotos,
+        termos: ter.data ?? [], atendimentos: ate.data ?? [], fotos, retificacoes: (ret.data ?? []) as Retificacao[],
       });
     })();
   }, [profissional, id]);
@@ -186,10 +188,14 @@ export default function ImprimirPage() {
                 return (
                   <div key={at.id} className="break-inside-avoid rounded-lg border border-gray-200 p-4">
                     <div className="mb-2 flex justify-between">
-                      <p className="font-bold">{t?.nome ?? "Procedimento"}</p>
+                      <p className="font-bold">
+                        {t?.nome ?? "Procedimento"}
+                        {at.status === "retificado" && <span className="ml-2 text-xs font-normal text-gray-500">[ORIGINAL — RETIFICADO]</span>}
+                        {at.retifica_id && <span className="ml-2 text-xs font-normal text-amber-700">[VERSÃO RETIFICADA]</span>}
+                      </p>
                       <p className="text-sm text-gray-600">{formatarDataHora(at.data_atendimento)}</p>
                     </div>
-                    <div className={mapa.length ? "grid grid-cols-[1fr_200px] gap-4" : ""}>
+                    <div className={mapa.length ? "grid grid-cols-[1fr_250px] gap-4" : ""}>
                       <dl className="grid grid-cols-2 content-start gap-x-4 gap-y-2">
                         <Info r="Avaliação" v={at.pe_avaliacao} />
                         <Info r="Diagnóstico de enfermagem" v={at.pe_diagnostico} />
@@ -212,7 +218,7 @@ export default function ImprimirPage() {
                       </dl>
                       {mapa.length > 0 && t && (
                         <div className="text-xs">
-                          <MapaFacial marcacoes={mapa} somenteLeitura unidade={unidadeDoMapa(t)}
+                          <MapaFacial marcacoes={mapa} somenteLeitura compacto unidade={unidadeDoMapa(t)}
                             croqui={(at.dados_procedimento?.croqui as Croqui) ?? "desenho"} />
                         </div>
                       )}
@@ -251,6 +257,35 @@ export default function ImprimirPage() {
                   ) : (
                     <p className="mt-2 text-xs text-gray-500">Registrado em {formatarDataHora(t.aceito_em)} (sem assinatura digital)</p>
                   )}
+                </div>
+              ))}
+            </div>
+          </Secao>
+        )}
+
+        {/* Retificações */}
+        {d.retificacoes.length > 0 && (
+          <Secao titulo="Retificações">
+            {d.termos.some((t) => t.assinatura_imagem && d.retificacoes.some((r) => r.created_at > t.aceito_em)) && (
+              <p className="mb-2 text-xs font-medium text-amber-700">
+                Este prontuário possui retificações posteriores a assinaturas registradas.
+              </p>
+            )}
+            <div className="space-y-2">
+              {d.retificacoes.map((r) => (
+                <div key={r.id} className="break-inside-avoid rounded-lg border border-gray-200 p-3 text-xs">
+                  <p className="font-medium">
+                    {r.tabela === "patients" ? "Dados da paciente" : "Atendimento"} — retificado em {formatarDataHora(r.created_at)} por{" "}
+                    {r.profissional_nome}{r.registro_conselho ? ` (${r.registro_conselho.trim()})` : ""}
+                  </p>
+                  <p><b>{nomeMotivo(r.motivo_tipo)}:</b> {r.justificativa}</p>
+                  <ul className="mt-1">
+                    {Object.keys(r.dados_depois).map((k) => (
+                      <li key={k}>
+                        {ROTULOS[k] ?? k}: <s>{valorLegivel(k, r.dados_antes[k])}</s> → {valorLegivel(k, r.dados_depois[k])}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ))}
             </div>

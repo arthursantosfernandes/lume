@@ -11,6 +11,8 @@ import { AnamneseAba } from "@/components/Anamnese";
 import { AtendimentosAba } from "@/components/Atendimentos";
 import { ConsentimentoImagem } from "@/components/Consentimento";
 import { FotosPaciente } from "@/components/Fotos";
+import { TermosProcedimento } from "@/components/TermosProcedimento";
+import { HistoricoRetificacoes } from "@/components/Retificacoes";
 import Link from "next/link";
 
 type Paciente = {
@@ -24,13 +26,13 @@ export default function PacientePage() {
   const { id } = useParams<{ id: string }>();
   const { profissional, carregando } = useProfissional();
   const [paciente, setPaciente] = useState<Paciente | null>(null);
-  const [aba, setAba] = useState<"dados" | "anamnese" | "atendimentos" | "fotos">("dados");
+  const [aba, setAba] = useState<"dados" | "anamnese" | "atendimentos" | "termos" | "fotos">("dados");
   const [fotosLiberadas, setFotosLiberadas] = useState(false);
 
   // Abre direto numa aba se a URL tiver ?aba=atendimentos (ex: depois de salvar)
   useEffect(() => {
     const a = new URLSearchParams(window.location.search).get("aba");
-    if (a === "anamnese" || a === "atendimentos" || a === "fotos") setAba(a);
+    if (a === "anamnese" || a === "atendimentos" || a === "termos" || a === "fotos") setAba(a);
   }, []);
 
   useEffect(() => {
@@ -60,6 +62,7 @@ export default function PacientePage() {
     { chave: "dados", nome: "Dados" },
     { chave: "anamnese", nome: "Anamnese" },
     { chave: "atendimentos", nome: "Atendimentos" },
+    { chave: "termos", nome: "Termos" },
     { chave: "fotos", nome: "Fotos" },
   ] as const;
 
@@ -80,10 +83,16 @@ export default function PacientePage() {
         </nav>
 
         {aba === "dados" && (
-          <Link href={`/pacientes/${paciente.id}/imprimir`}
-            className="mb-3 flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-medium text-salvia-escuro shadow-sm">
-            🖨 Imprimir / salvar prontuário em PDF
-          </Link>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <Link href={`/pacientes/${paciente.id}/retificar`}
+              className="flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-medium text-salvia-escuro shadow-sm">
+              ✏️ Retificar dados
+            </Link>
+            <Link href={`/pacientes/${paciente.id}/imprimir`}
+              className="flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-medium text-salvia-escuro shadow-sm">
+              🖨 Imprimir / PDF
+            </Link>
+          </div>
         )}
         {aba === "dados" ? (
           <dl className="divide-y divide-black/5 rounded-2xl bg-white px-4 shadow-sm">
@@ -94,10 +103,14 @@ export default function PacientePage() {
               </div>
             ))}
           </dl>
-        ) : aba === "anamnese" ? (
+        ) : null}
+        {aba === "dados" && <HistoricoRetificacoes pacienteId={paciente.id} tabela="patients" />}
+        {aba === "dados" ? null : aba === "anamnese" ? (
           <AnamneseAba pacienteId={paciente.id} profissional={profissional} />
         ) : aba === "atendimentos" ? (
           <AtendimentosAba pacienteId={paciente.id} />
+        ) : aba === "termos" ? (
+          <TermosProcedimento pacienteId={paciente.id} pacienteTelefone={paciente.telefone} profissional={profissional} />
         ) : (
           <div className="space-y-4">
             <ConsentimentoImagem pacienteId={paciente.id} pacienteTelefone={paciente.telefone}

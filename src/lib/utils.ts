@@ -80,3 +80,67 @@ export function hojeISO(): string {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
 }
+
+// ---------- CPF ----------
+
+export const soNumeros = (v: string) => v.replace(/\D/g, "");
+
+// 00.000.000/0000-00
+export function mascaraCNPJ(v: string): string {
+  const d = soNumeros(v).slice(0, 14);
+  return d
+    .replace(/^(\d{2})(\d)/, "$1.$2")
+    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1/$2")
+    .replace(/(\d{4})(\d)/, "$1-$2");
+}
+
+/** Busca endereço pelo CEP (ViaCEP, gratuito). Devolve null se não achar. */
+export async function buscarCEP(cep: string): Promise<{ endereco: string; bairro: string; cidade: string; uf: string } | null> {
+  const d = soNumeros(cep);
+  if (d.length !== 8) return null;
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${d}/json/`);
+    const j = await r.json();
+    if (j.erro) return null;
+    return { endereco: j.logradouro ?? "", bairro: j.bairro ?? "", cidade: j.localidade ?? "", uf: j.uf ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+/** Valida os dígitos verificadores do CPF (não confirma titularidade). */
+export function validarCPF(v: string): boolean {
+  const d = soNumeros(v);
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const calc = (n: number) => {
+    let s = 0;
+    for (let i = 0; i < n; i++) s += Number(d[i]) * (n + 1 - i);
+    const r = (s * 10) % 11;
+    return r === 10 ? 0 : r;
+  };
+  return calc(9) === Number(d[9]) && calc(10) === Number(d[10]);
+}
+
+export const MOTIVOS_RETIFICACAO: { v: string; t: string }[] = [
+  { v: "erro_digitacao", t: "Erro de digitação" },
+  { v: "informacao_complementar", t: "Informação complementar" },
+  { v: "correcao_documental", t: "Correção documental" },
+  { v: "solicitacao_paciente", t: "Solicitação da paciente" },
+  { v: "outro", t: "Outro" },
+];
+
+/** Mensagem de erro do CPF para mostrar embaixo do campo (null = ok ou vazio) */
+export function erroCPF(v: string): string | null {
+  const d = soNumeros(v);
+  if (d.length === 0) return null;
+  if (d.length < 11) return "CPF incompleto.";
+  return validarCPF(d) ? null : "CPF inválido. Confira os números.";
+}
+
+/** Traduz erros do banco para mensagens amigáveis */
+export function mensagemErro(msg: string): string {
+  if (msg.includes("patients_cpf_unico")) return "Já existe uma paciente com este CPF cadastrada nesta clínica.";
+  if (msg.includes("patients_cpf_valido")) return "CPF inválido. Confira os números.";
+  return msg;
+}

@@ -1,73 +1,125 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { useSessao } from "@/lib/useProfissional";
+import { entrarComSenha, pegarAviso, prepararVerificacao, sair, tentarConfirmarPeloLink } from "@/lib/seguranca";
+import { mascaraCPF } from "@/lib/utils";
+import { TelaAcesso } from "@/components/TelaAcesso";
+import { VerificacaoAcesso } from "@/components/VerificacaoAcesso";
+import { Carregando } from "@/components/Carregando";
 
-export default function LoginPage() {
+export default function EntrarPage() {
   const router = useRouter();
-  const [modo, setModo] = useState<"entrar" | "criar">("entrar");
-  const [email, setEmail] = useState("");
+  const { estado, email, recarregar } = useSessao();
+  const [login, setLogin] = useState("");
   const [senha, setSenha] = useState("");
+  const [verSenha, setVerSenha] = useState(false);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [conferindoLink, setConferindoLink] = useState(false);
 
-  async function enviar(e: React.FormEvent) {
+  // Recado deixado por outra tela (ex.: saiu por segurança, senha alterada)
+  useEffect(() => {
+    if (estado === "sem-sessao") {
+      const a = pegarAviso();
+      if (a) setAviso(a);
+    }
+  }, [estado]);
+
+  // Já está dentro? Vai direto. Veio pelo link do e-mail? Tenta confirmar.
+  useEffect(() => {
+    if (estado === "ok") router.replace("/");
+    else if (estado === "sem-cadastro") router.replace("/cadastro");
+    else if (estado === "nao-verificado") {
+      setConferindoLink(true);
+      (async () => {
+        // 1) Veio pelo link do e-mail? Conclui sozinho.
+        if (await tentarConfirmarPeloLink()) {
+          await recarregar();
+          return setConferindoLink(false);
+        }
+        // 2) A senha foi digitada há pouco? Então pede o código.
+        //    Sessão antiga -> pede a senha de novo. Sem conexão -> não desloga.
+        const r = await prepararVerificacao();
+        if (r === "expirada") {
+          await sair();
+          setAviso("Por segurança, entre novamente com sua senha para confirmar este aparelho.");
+          await recarregar();
+        } else if (r === "erro") {
+          setErro("Sem conexão com o servidor. Confira a internet e toque em Entrar de novo.");
+          await sair();
+          await recarregar();
+        }
+        setConferindoLink(false);
+      })();
+    }
+  }, [estado, router, recarregar]);
+
+  // CPF ganha máscara; e-mail fica como digitado
+  function mudarLogin(v: string) {
+    setLogin(/^[\d.\-\s]*$/.test(v) && v.replace(/\D/g, "").length <= 11 ? mascaraCPF(v) : v);
+  }
+
+  async function entrar(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
     setAviso("");
     setEnviando(true);
+    const problema = await entrarComSenha(login, senha);
+    setEnviando(false);
+    if (problema) return setErro(problema);
+    setSenha("");
+    await recarregar();
+  }
 
-    if (modo === "entrar") {
-      const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-      setEnviando(false);
-      if (error) return setErro("E-mail ou senha incorretos.");
-      router.replace("/");
-    } else {
-      const { data, error } = await supabase.auth.signUp({ email, password: senha });
-      setEnviando(false);
-      if (error) return setErro(error.message);
-      if (data.session) router.replace("/cadastro");
-      else setAviso("Conta criada! Confirme pelo link enviado ao seu e-mail e depois entre.");
-    }
+  async function concluido() {
+    await recarregar();
+  }
+
+  if (estado === "carregando" || estado === "ok" || estado === "sem-cadastro" || conferindoLink) return <Carregando />;
+
+  if (estado === "nao-verificado" && email) {
+    return (
+      <TelaAcesso titulo="Confirme que é você" subtitulo="Só na primeira vez neste aparelho">
+        <VerificacaoAcesso email={email} onConcluido={concluido} onVoltar={() => recarregar()} />
+      </TelaAcesso>
+    );
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-6 py-10">
-      <div className="mb-8 text-center">
-        <img src="/icon-192.png" alt="Lumê" className="mx-auto mb-4 h-20 w-20 rounded-2xl shadow-sm" />
-        <h1 className="text-3xl font-semibold tracking-tight">Lumê</h1>
-        <p className="text-tinta/60">Prontuário estético</p>
-      </div>
-
-      <form onSubmit={enviar} className="space-y-4">
+    <TelaAcesso titulo="Lumê" subtitulo="Prontuário estético">
+      <form onSubmit={entrar} className="etapa-entra space-y-4">
         <div>
-          <label className="rotulo" htmlFor="email">E-mail</label>
-          <input id="email" type="email" required autoComplete="email" className="campo"
-            value={email} onChange={(e) => setEmail(e.target.value)} />
+          <label className="rotulo" htmlFor="login">CPF ou e-mail</label>
+          <input id="login" required className="campo" autoComplete="username" placeholder="000.000.000-00"
+            value={login} onChange={(e) => mudarLogin(e.target.value)} />
         </div>
         <div>
-          <label className="rotulo" htmlFor="senha">Senha</label>
-          <input id="senha" type="password" required minLength={8} className="campo"
-            autoComplete={modo === "entrar" ? "current-password" : "new-password"}
-            value={senha} onChange={(e) => setSenha(e.target.value)} />
+          <div className="flex items-baseline justify-between">
+            <label className="rotulo" htmlFor="senha">Senha</label>
+            <Link href="/esqueci-senha" className="text-sm text-salvia-escuro underline">Esqueci minha senha</Link>
+          </div>
+          <div className="relative">
+            <input id="senha" type={verSenha ? "text" : "password"} required className="campo pr-16"
+              autoComplete="current-password" value={senha} onChange={(e) => setSenha(e.target.value)} />
+            <button type="button" onClick={() => setVerSenha(!verSenha)}
+              className="absolute inset-y-0 right-3 text-sm text-tinta/50">{verSenha ? "Ocultar" : "Mostrar"}</button>
+          </div>
         </div>
 
         {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
         {aviso && <p className="rounded-lg bg-salvia-claro p-3 text-sm">{aviso}</p>}
 
-        <button className="botao" disabled={enviando}>
-          {enviando ? "Aguarde…" : modo === "entrar" ? "Entrar" : "Criar conta"}
-        </button>
+        <button className="botao" disabled={enviando}>{enviando ? "Entrando…" : "Entrar"}</button>
       </form>
 
-      <button
-        className="mt-6 text-sm text-salvia-escuro underline"
-        onClick={() => setModo(modo === "entrar" ? "criar" : "entrar")}
-      >
-        {modo === "entrar" ? "Ainda não tem conta? Criar conta" : "Já tenho conta. Entrar"}
-      </button>
-    </main>
+      <div className="mt-10 border-t border-black/5 pt-6 text-center">
+        <p className="mb-3 text-sm text-tinta/60">Primeira vez no Lumê?</p>
+        <Link href="/cadastro" className="botao-sec block">Criar minha conta</Link>
+      </div>
+    </TelaAcesso>
   );
 }

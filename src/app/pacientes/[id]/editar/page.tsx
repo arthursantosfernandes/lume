@@ -1,27 +1,44 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useProfissional } from "@/lib/useProfissional";
-import { UFS, capitalizarNome, mascaraCPF, mascaraTelefone, mascaraCEP, erroCPF, soNumeros, mensagemErro } from "@/lib/utils";
+import { UFS, capitalizarNome, mascaraCEP, mascaraCPF, mascaraTelefone } from "@/lib/utils";
 import { Topo } from "@/components/Topo";
 import { Carregando } from "@/components/Carregando";
 
-export default function NovaPacientePage() {
+const CAMPOS = ["nome", "sexo", "data_nascimento", "cpf", "telefone", "email", "cep", "endereco",
+  "cidade", "uf", "profissao", "como_conheceu", "observacoes"] as const;
+type Form = Record<(typeof CAMPOS)[number], string>;
+
+/** Edição dos dados cadastrais da paciente (fica registrado na auditoria). */
+export default function EditarPacientePage() {
+  const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { profissional, carregando } = useProfissional();
-  const [form, setForm] = useState({
-    nome: "", sexo: "", data_nascimento: "", cpf: "", telefone: "", email: "",
-    cep: "", endereco: "", cidade: "", uf: "SP", profissao: "", como_conheceu: "", observacoes: "",
-  });
+  const [form, setForm] = useState<Form | null>(null);
   const [erro, setErro] = useState("");
-  const [enviando, setEnviando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
-  if (carregando || !profissional) return <Carregando />;
+  useEffect(() => {
+    if (!profissional) return;
+    supabase.from("patients").select(CAMPOS.join(", ")).eq("id", id).maybeSingle().then(({ data }) => {
+      if (!data) return;
+      const d = data as unknown as Record<string, string | null>;
+      const f = {} as Form;
+      for (const k of CAMPOS) f[k] = d[k] ?? "";
+      f.cpf = f.cpf ? mascaraCPF(f.cpf) : "";
+      f.telefone = f.telefone ? mascaraTelefone(f.telefone) : "";
+      f.cep = f.cep ? mascaraCEP(f.cep) : "";
+      if (!f.uf) f.uf = "SP";
+      setForm(f);
+    });
+  }, [profissional, id]);
 
-  // mascara (opcional) formata o valor enquanto a pessoa digita
-  const campo = (chave: keyof typeof form, mascara?: (v: string) => string) => ({
+  if (carregando || !profissional || !form) return <Carregando />;
+
+  const campo = (chave: keyof Form, mascara?: (v: string) => string) => ({
     value: form[chave],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
       setForm({ ...form, [chave]: mascara ? mascara(e.target.value) : e.target.value }),
@@ -29,33 +46,22 @@ export default function NovaPacientePage() {
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
-    if (!profissional) return;
+    if (!form) return;
     setErro("");
-    const cpfErro = erroCPF(form.cpf);
-    if (cpfErro) return setErro(cpfErro);
-    setEnviando(true);
-
-    // Campos vazios viram null no banco
+    setSalvando(true);
     const dados = Object.fromEntries(
       Object.entries(form).map(([k, v]) => [k, v.trim() === "" ? null : v.trim()])
     );
     dados.nome = capitalizarNome(form.nome);
-    dados.cpf = soNumeros(form.cpf) || null; // guarda só os números
-
-    const { data, error } = await supabase
-      .from("patients")
-      .insert({ ...dados, clinic_id: profissional.clinic_id, created_by: profissional.id })
-      .select("id")
-      .single();
-
-    setEnviando(false);
-    if (error) return setErro(mensagemErro(error.message));
-    router.replace(`/pacientes/${data.id}`);
+    const { error } = await supabase.from("patients").update(dados).eq("id", id);
+    setSalvando(false);
+    if (error) return setErro(error.message);
+    router.replace(`/pacientes/${id}`);
   }
 
   return (
     <>
-      <Topo titulo="Nova paciente" voltar="/" />
+      <Topo titulo="Editar paciente" voltar={`/pacientes/${id}`} />
       <main className="mx-auto max-w-3xl px-4 py-6">
         <form onSubmit={salvar} className="space-y-4">
           <div>
@@ -78,15 +84,11 @@ export default function NovaPacientePage() {
             </div>
             <div>
               <label className="rotulo">CPF</label>
-              <input className={`campo ${erroCPF(form.cpf) && form.cpf.length >= 14 ? "border-red-400" : ""}`}
-                inputMode="numeric" placeholder="000.000.000-00" {...campo("cpf", mascaraCPF)} />
-              {form.cpf.length >= 14 && erroCPF(form.cpf) && (
-                <p className="mt-1 text-sm text-red-700">{erroCPF(form.cpf)}</p>
-              )}
+              <input className="campo" inputMode="numeric" {...campo("cpf", mascaraCPF)} />
             </div>
             <div>
               <label className="rotulo">Telefone / WhatsApp</label>
-              <input className="campo" type="tel" placeholder="(11) 90000-0000" {...campo("telefone", mascaraTelefone)} />
+              <input className="campo" type="tel" {...campo("telefone", mascaraTelefone)} />
             </div>
             <div>
               <label className="rotulo">E-mail</label>
@@ -94,11 +96,15 @@ export default function NovaPacientePage() {
             </div>
             <div>
               <label className="rotulo">CEP</label>
-              <input className="campo" inputMode="numeric" placeholder="00000-000" {...campo("cep", mascaraCEP)} />
+              <input className="campo" inputMode="numeric" {...campo("cep", mascaraCEP)} />
             </div>
             <div>
               <label className="rotulo">Profissão</label>
               <input className="campo" {...campo("profissao")} />
+            </div>
+            <div>
+              <label className="rotulo">Como conheceu a clínica</label>
+              <input className="campo" {...campo("como_conheceu")} />
             </div>
           </div>
           <div>
@@ -118,16 +124,12 @@ export default function NovaPacientePage() {
             </div>
           </div>
           <div>
-            <label className="rotulo">Como conheceu a clínica</label>
-            <input className="campo" {...campo("como_conheceu")} />
-          </div>
-          <div>
             <label className="rotulo">Observações</label>
             <textarea className="campo min-h-24" {...campo("observacoes")} />
           </div>
-
+          <p className="text-xs text-tinta/50">As alterações ficam registradas no histórico (auditoria).</p>
           {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
-          <button className="botao" disabled={enviando}>{enviando ? "Salvando…" : "Salvar paciente"}</button>
+          <button className="botao" disabled={salvando}>{salvando ? "Salvando…" : "Salvar alterações"}</button>
         </form>
       </main>
     </>

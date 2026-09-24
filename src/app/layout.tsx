@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ProvedorSessao } from "@/components/Sessao";
 
 export const metadata: Metadata = {
   title: "Lumê — Prontuário Estético",
@@ -18,7 +19,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        <ProvedorSessao>{children}</ProvedorSessao>
+      </body>
     </html>
   );
 }

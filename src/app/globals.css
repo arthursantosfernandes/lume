@@ -15,6 +15,7 @@ body {
   color: var(--color-tinta);
 }
 
+@layer components {
 /* Campos de formulário padrão */
 .campo {
   @apply w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-base outline-none focus:border-salvia focus:ring-2 focus:ring-salvia/30;
@@ -23,10 +24,132 @@ body {
   @apply mb-1 block text-sm font-medium text-tinta/80;
 }
 .botao {
-  @apply w-full rounded-xl bg-salvia px-4 py-3 text-base font-semibold text-white active:scale-[0.99] disabled:opacity-50 hover:bg-salvia-escuro;
+  @apply w-full rounded-xl bg-salvia px-4 py-3 text-base font-semibold text-white shadow-sm shadow-salvia/30 transition duration-150 hover:bg-salvia-escuro hover:shadow-md active:scale-[0.97] disabled:opacity-50 disabled:shadow-none;
 }
 .botao-sec {
-  @apply w-full rounded-xl border border-salvia px-4 py-3 text-base font-semibold text-salvia-escuro hover:bg-salvia-claro;
+  @apply w-full rounded-xl border border-salvia px-4 py-3 text-base font-semibold text-salvia-escuro transition duration-150 hover:bg-salvia-claro active:scale-[0.97];
+}
+
+/* Tecla do teclado de PIN */
+.tecla {
+  @apply flex h-16 items-center justify-center rounded-2xl bg-white text-2xl font-medium text-tinta shadow-sm disabled:opacity-40;
+}
+}
+
+@layer base {
+/* Toque em qualquer botão ou link responde na hora */
+button, a { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), a { transition: transform 120ms ease, background-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
+button:not(:disabled):active { transform: scale(0.97); }
+}
+
+/* =====================================================================
+   Movimento (motion) — suave e rápido. Quem ativou "reduzir movimento"
+   no celular/computador não vê as animações (acessibilidade).
+   ===================================================================== */
+
+/* Cada tela entra: aparece e o conteúdo sobe levemente
+   (o movimento fica só no <main>, para não mexer em barras fixas) */
+@keyframes entrar {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes aparecer { from { opacity: 0; } to { opacity: 1; } }
+.entrada-pagina { animation: aparecer 220ms ease backwards; }
+.entrada-pagina main { animation: entrar 340ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+
+/* Listas (pacientes, atendimentos, fotos): itens aparecem em cascata */
+.lista-animada > * { animation: entrar 380ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+.lista-animada > *:nth-child(2)  { animation-delay: 40ms; }
+.lista-animada > *:nth-child(3)  { animation-delay: 80ms; }
+.lista-animada > *:nth-child(4)  { animation-delay: 120ms; }
+.lista-animada > *:nth-child(5)  { animation-delay: 160ms; }
+.lista-animada > *:nth-child(6)  { animation-delay: 200ms; }
+.lista-animada > *:nth-child(7)  { animation-delay: 240ms; }
+.lista-animada > *:nth-child(n+8) { animation-delay: 280ms; }
+
+/* Cartões levantam um pouco ao passar o mouse */
+.cartao-vivo { transition: transform 180ms ease, box-shadow 180ms ease; }
+@media (hover: hover) {
+  .cartao-vivo:hover { transform: translateY(-2px); box-shadow: 0 10px 24px -12px rgb(45 58 49 / 0.25); }
+}
+
+/* Fundo animado das telas de entrada (manchas de cor que flutuam devagar) */
+.fundo-aurora { position: relative; overflow: hidden; isolation: isolate; }
+.fundo-aurora::before,
+.fundo-aurora::after {
+  content: ""; position: absolute; z-index: -1; border-radius: 9999px; filter: blur(60px); opacity: 0.55;
+}
+.fundo-aurora::before {
+  width: 26rem; height: 26rem; top: -8rem; left: -8rem;
+  background: radial-gradient(circle, #cfdccf, transparent 70%);
+  animation: flutuar 14s ease-in-out infinite alternate;
+}
+.fundo-aurora::after {
+  width: 22rem; height: 22rem; bottom: -6rem; right: -6rem;
+  background: radial-gradient(circle, #ecdcb9, transparent 70%);
+  animation: flutuar 18s ease-in-out infinite alternate-reverse;
+}
+@keyframes flutuar {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(3rem, 2rem) scale(1.15); }
+}
+
+/* Logo "respirando" */
+@keyframes respirar {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgb(126 154 131 / 0.35); }
+  50%      { transform: scale(1.04); box-shadow: 0 0 0 12px rgb(126 154 131 / 0); }
+}
+.logo-respira { animation: respirar 3.2s ease-in-out infinite; }
+
+/* Troca de etapa no cadastro: desliza para o lado */
+@keyframes deslizar {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: none; }
+}
+.etapa-entra { animation: deslizar 300ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+
+/* Erro: balança (PIN errado, código errado) */
+@keyframes tremer {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-7px); }
+  40%, 60% { transform: translateX(7px); }
+}
+.tremer { animation: tremer 420ms ease both; }
+
+/* Sucesso: check que se desenha */
+@keyframes desenhar { to { stroke-dashoffset: 0; } }
+.check-anim path { stroke-dasharray: 48; stroke-dashoffset: 48; animation: desenhar 500ms 120ms ease forwards; }
+@keyframes pular { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
+.pular { animation: pular 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* Tela de bloqueio */
+.bloqueio-fundo { background: rgb(247 244 238 / 0.82); backdrop-filter: blur(14px); animation: aparecer 250ms ease both; }
+.bloqueio-cartao { animation: entrar 360ms 60ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
+
+/* Barrinha de carregamento no topo ao trocar de tela */
+@keyframes avancar { from { transform: scaleX(0); } to { transform: scaleX(0.85); } }
+.barra-navegacao {
+  position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 60; transform-origin: left;
+  background: linear-gradient(90deg, var(--color-salvia), var(--color-dourado));
+  animation: avancar 2.5s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+}
+
+/* Esqueleto (enquanto carrega): brilho passando */
+@keyframes brilho { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+.esqueleto {
+  border-radius: 1rem;
+  background: linear-gradient(90deg, #ece8df 25%, #f6f3ec 50%, #ece8df 75%);
+  background-size: 200% 100%;
+  animation: brilho 1.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important; animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important; transition-duration: 1ms !important;
+  }
 }
 
 /* Impressão do prontuário */

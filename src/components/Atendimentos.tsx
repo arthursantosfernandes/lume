@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { formatarData, formatarDataHora } from "@/lib/utils";
 import { MapaFacial, type Marcacao, type Croqui } from "./MapaFacial";
+import { CartaoRetificacao, type Retificacao } from "./Retificacoes";
 import { exibirValor, unidadeDoMapa, type Campo, type Template } from "./CamposProcedimento";
 
 type Atendimento = {
@@ -23,6 +24,8 @@ type Atendimento = {
   sessoes_previstas: number | null;
   retorno_previsto: string | null;
   observacoes: string | null;
+  status: string;
+  retifica_id: string | null;
   pe_avaliacao: string | null;
   pe_diagnostico: string | null;
   pe_planejamento: string | null;
@@ -59,6 +62,7 @@ export function AtendimentosAba({ pacienteId }: { pacienteId: string }) {
   const [lista, setLista] = useState<Atendimento[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(true);
+  const [retificacoes, setRetificacoes] = useState<Retificacao[]>([]);
 
   useEffect(() => {
     supabase
@@ -72,10 +76,12 @@ export function AtendimentosAba({ pacienteId }: { pacienteId: string }) {
         setLista((data ?? []) as unknown as Atendimento[]);
         setCarregando(false);
       });
+    supabase.from("retificacoes").select("*").eq("patient_id", pacienteId).eq("tabela", "atendimentos")
+      .then(({ data }) => setRetificacoes((data ?? []) as Retificacao[]));
   }, [pacienteId]);
 
   return (
-    <div className="space-y-3">
+    <div className="lista-animada space-y-3">
       <Link href={`/pacientes/${pacienteId}/atendimento/novo`} className="botao block text-center">
         + Novo atendimento
       </Link>
@@ -89,11 +95,21 @@ export function AtendimentosAba({ pacienteId }: { pacienteId: string }) {
           const t = a.procedure_templates;
           const cred = a.professional_credentials;
           const expandido = aberto === a.id;
+          const retificado = a.status === "retificado";
+          const ret = retificacoes.find((r) => r.registro_novo_id === a.id); // esta versão veio de uma retificação
           return (
-            <article key={a.id} className="overflow-hidden rounded-2xl bg-white shadow-sm">
+            <article key={a.id} className={`cartao-vivo overflow-hidden rounded-2xl bg-white shadow-sm ${retificado ? "opacity-60" : ""}`}>
               <button className="flex w-full items-start gap-3 p-4 text-left" onClick={() => setAberto(expandido ? null : a.id)}>
                 <div className="flex-1">
-                  <p className="font-semibold">{t?.nome ?? "Procedimento"}</p>
+                  <p className="font-semibold">
+                    {t?.nome ?? "Procedimento"}
+                    {retificado && (
+                      <span className="ml-2 rounded-md bg-tinta/10 px-1.5 py-0.5 text-xs font-medium">Original · retificado</span>
+                    )}
+                    {ret && (
+                      <span className="ml-2 rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900">Versão retificada</span>
+                    )}
+                  </p>
                   <p className="text-sm text-tinta/60">{formatarDataHora(a.data_atendimento)}</p>
                   {resumo(a) && <p className="mt-1 text-sm">{resumo(a)}</p>}
                   {a.retorno_previsto && (
@@ -105,6 +121,12 @@ export function AtendimentosAba({ pacienteId }: { pacienteId: string }) {
 
               {expandido && (
                 <div className="border-t border-black/5 p-4">
+                  {ret && <div className="mb-4"><CartaoRetificacao r={ret} /></div>}
+                  {retificado && (
+                    <p className="mb-4 rounded-xl bg-tinta/5 p-3 text-sm">
+                      Este é o registro original. Ele foi retificado e continua guardado sem alterações.
+                    </p>
+                  )}
                   {a.mapa?.length > 0 && t && (
                     <div className="mb-4">
                       <MapaFacial marcacoes={a.mapa} somenteLeitura unidade={unidadeDoMapa(t)}
@@ -139,6 +161,12 @@ export function AtendimentosAba({ pacienteId }: { pacienteId: string }) {
                     {cred?.conselho && cred.conselho !== "nenhum"
                       ? ` · ${cred.conselho}-${cred.uf ?? ""} ${cred.numero_registro ?? ""}` : ""}
                   </p>
+                  {!retificado && (
+                    <Link href={`/pacientes/${pacienteId}/atendimento/${a.id}/retificar`}
+                      className="mt-3 inline-block text-sm font-medium text-salvia-escuro underline">
+                      ✏️ Retificar este atendimento
+                    </Link>
+                  )}
                 </div>
               )}
             </article>
