@@ -53,6 +53,66 @@ export default function ImprimirPage() {
     termos: Dado[]; atendimentos: Dado[]; fotos: Dado[]; retificacoes: Retificacao[];
   } | null>(null);
   const [inc, setInc] = useState({ anamnese: true, atendimentos: true, termos: true, fotos: false });
+  // Assinatura eletrônica da(o) profissional
+  const [assinaturaUrl, setAssinaturaUrl] = useState<string | null>(null);
+  const [assinado, setAssinado] = useState<{ id: string; em: string; hash: string } | null>(null);
+  const [assinando, setAssinando] = useState(false);
+  const [erroAss, setErroAss] = useState("");
+  const [verificado, setVerificado] = useState(false);
+  const [alteradoAposAssinatura, setAlteradoAposAssinatura] = useState(false);
+
+  // Mudou o que entra no documento? Confere de novo se esse conteúdo já foi assinado.
+  useEffect(() => { setAssinado(null); setVerificado(false); }, [inc]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!profissional) return;
+    supabase.from("professionals").select("assinatura_path").eq("id", profissional.id).maybeSingle()
+      .then(async ({ data }) => {
+        if (!data?.assinatura_path) return;
+        const { data: u } = await supabase.storage.from("clinic-assets").createSignedUrl(data.assinatura_path, 3600);
+        setAssinaturaUrl(u?.signedUrl ?? null);
+      });
+  }, [profissional]);
+
+  /** Código (SHA-256) do conteúdo do prontuário exibido, sem o rodapé da assinatura */
+  async function hashConteudo(): Promise<string | null> {
+    const el = document.getElementById("prontuario-conteudo");
+    if (!el) return null;
+    const copia = el.cloneNode(true) as HTMLElement;
+    copia.querySelectorAll("footer[data-assinatura], [data-sem-hash]").forEach((n) => n.remove());
+    const texto = (copia.textContent ?? "").replace(/\s+/g, " ").trim();
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(texto));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  // Ao abrir: se o prontuário já foi assinado e o conteúdo não mudou, mostra a assinatura salva
+  useEffect(() => {
+    if (!d || verificado) return;
+    const t = window.setTimeout(async () => {
+      const hash = await hashConteudo();
+      const { data } = await supabase.from("assinaturas_prontuario").select("id, assinado_em, hash_documento")
+        .eq("patient_id", id).order("assinado_em", { ascending: false }).limit(20);
+      const igual = (data ?? []).find((a) => a.hash_documento === hash);
+      if (igual && hash) setAssinado({ id: igual.id, em: igual.assinado_em, hash });
+      else setAlteradoAposAssinatura((data ?? []).length > 0);
+      setVerificado(true);
+    }, 600); // espera as imagens/textos aparecerem
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d, inc, verificado]);
+
+  /** Registra a assinatura do conteúdo exibido no banco */
+  async function assinar() {
+    setErroAss("");
+    setAssinando(true);
+    const hash = await hashConteudo();
+    if (!hash) { setAssinando(false); return; }
+    const { data, error } = await supabase.rpc("assinar_prontuario", { p_patient: id, p_hash: hash });
+    setAssinando(false);
+    if (error || !data) return setErroAss(error?.message ?? "Não foi possível assinar.");
+    const r = data as { id: string; assinado_em: string };
+    setAssinado({ id: r.id, em: r.assinado_em, hash });
+  }
 
   useEffect(() => {
     if (!profissional) return;
@@ -112,14 +172,30 @@ export default function ImprimirPage() {
                 {t}
               </label>
             ))}
-          <button onClick={() => window.print()} className="ml-auto rounded-xl bg-salvia px-4 py-2 text-sm font-semibold text-white">
-            🖨 Imprimir / PDF
-          </button>
+          <div className="ml-auto flex gap-2">
+            {assinado ? (
+              <span className="rounded-xl bg-salvia-claro px-3 py-2 text-sm font-medium text-salvia-escuro">✅ Assinado</span>
+            ) : (
+              <button onClick={assinar} disabled={assinando}
+                className="rounded-xl border border-salvia px-3 py-2 text-sm font-semibold text-salvia-escuro disabled:opacity-50">
+                {assinando ? "Assinando…" : "✍️ Assinar eletronicamente"}
+              </button>
+            )}
+            <button onClick={() => window.print()} className="rounded-xl bg-salvia px-4 py-2 text-sm font-semibold text-white">
+              🖨 Imprimir / PDF
+            </button>
+          </div>
         </div>
+        {erroAss && <p className="mx-auto mt-2 max-w-3xl rounded-lg bg-red-50 p-2 text-sm text-red-700">{erroAss}</p>}
+        {!assinado && !assinaturaUrl && (
+          <p className="mx-auto mt-2 max-w-3xl text-xs text-tinta/50">
+            Dica: desenhe sua assinatura em ⚙ Configurações → Minha assinatura para ela aparecer no prontuário assinado.
+          </p>
+        )}
       </div>
 
       {/* Folha */}
-      <article className="mx-auto my-4 max-w-3xl bg-white p-8 text-gray-900 shadow print:my-0 print:max-w-none print:p-0 print:shadow-none">
+      <article id="prontuario-conteudo" className="mx-auto my-4 max-w-3xl bg-white p-8 text-gray-900 shadow print:my-0 print:max-w-none print:p-0 print:shadow-none">
         {/* Cabeçalho da clínica */}
         <header className="flex items-center gap-4 border-b-2 border-salvia pb-4">
           {d.logo && <img src={d.logo} alt="" className="h-16 w-16 object-contain" />}
@@ -132,7 +208,7 @@ export default function ImprimirPage() {
           </div>
           <div className="text-right">
             <p className="text-sm font-bold uppercase tracking-wide text-salvia-escuro">Prontuário</p>
-            <p className="text-[10px] text-gray-500">Emitido em {formatarDataHora(new Date().toISOString())}</p>
+            <p data-sem-hash className="text-[10px] text-gray-500">Emitido em {formatarDataHora(new Date().toISOString())}</p>
           </div>
         </header>
 
@@ -308,12 +384,42 @@ export default function ImprimirPage() {
           </Secao>
         )}
 
-        {/* Assinatura da profissional */}
-        <footer className="mt-12 break-inside-avoid text-center">
-          <div className="mx-auto w-72 border-t border-gray-500 pt-1">
+        {/* Assinatura da profissional (eletrônica ou para assinar à mão) */}
+        <footer data-assinatura className="mt-12 break-inside-avoid text-center">
+          {!assinado && (
+            <div className="mb-6 rounded-xl border border-dashed border-[#c9a25c] bg-[#c9a25c]/10 p-3 text-sm print:hidden">
+              <p className="font-medium">
+                {alteradoAposAssinatura
+                  ? "⚠️ O prontuário mudou desde a última assinatura. Assine novamente para validar esta versão."
+                  : "Este prontuário ainda não foi assinado eletronicamente."}
+              </p>
+              <button type="button" onClick={assinar} disabled={assinando}
+                className="mt-2 rounded-xl bg-salvia px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                {assinando ? "Assinando…" : "✍️ Assinar agora"}
+              </button>
+            </div>
+          )}
+          {assinado && assinaturaUrl && (
+            <img src={assinaturaUrl} alt="Assinatura" className="mx-auto -mb-2 h-16 object-contain" />
+          )}
+          <div className={`mx-auto w-72 border-t border-gray-500 pt-1 ${assinado && !assinaturaUrl ? "mt-4" : ""}`}>
             <p className="text-sm font-medium">{profissional.nome}</p>
             {registro && <p className="text-xs text-gray-600">{registro}</p>}
           </div>
+          {assinado && (
+            <div className="mx-auto mt-3 max-w-md rounded-lg border border-[#7e9a83] bg-[#e6ede6]/40 px-3 py-2 text-left text-[10px] leading-snug text-gray-700">
+              <p className="font-semibold text-[#5f7a65]">✔ Documento assinado eletronicamente</p>
+              <p>
+                Assinado por <b>{profissional.nome}</b>{registro ? ` (${registro})` : ""} em{" "}
+                {formatarDataHora(assinado.em)}, após acesso com senha e verificação em duas etapas.
+              </p>
+              <p>
+                Código de verificação:{" "}
+                <span className="font-mono">{assinado.hash.slice(0, 16).toUpperCase().match(/.{4}/g)?.join("-")}</span>
+                {" "}· Registro nº {assinado.id.slice(0, 8).toUpperCase()}
+              </p>
+            </div>
+          )}
           <p className="mt-6 text-[10px] text-gray-400">
             Documento gerado pelo Lumê — Prontuário Estético. Dados pessoais protegidos pela LGPD (Lei nº 13.709/2018).
           </p>

@@ -35,7 +35,12 @@ export default function InicioPage() {
     <>
       <Topo titulo={profissional.clinics?.nome ?? "Lumê"} />
       <main className="mx-auto max-w-3xl px-4 pb-28 pt-4">
-        <p className="mb-4 text-tinta/60">Olá, {capitalizarNome(profissional.nome.split(" ")[0])}!</p>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-tinta/60">Olá, {capitalizarNome(profissional.nome.split(" ")[0])}!</p>
+          <Link href="/fichas" className="rounded-lg bg-white px-3 py-1.5 text-sm text-salvia-escuro shadow-sm">
+            🖨 Fichas em papel
+          </Link>
+        </div>
 
         <input className="campo mb-4" placeholder="Buscar paciente…" value={busca}
           onChange={(e) => setBusca(e.target.value)} />

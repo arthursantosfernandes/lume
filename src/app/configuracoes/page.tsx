@@ -7,6 +7,7 @@ import { PROFISSOES, UFS, capitalizarNome, mascaraCEP, mascaraTelefone } from "@
 import { Topo } from "@/components/Topo";
 import { Carregando } from "@/components/Carregando";
 import { ConfigSeguranca } from "@/components/ConfigSeguranca";
+import { ConfigAssinatura } from "@/components/ConfigAssinatura";
 
 type Clinica = {
   nome: string; documento: string; telefone: string; email: string; cep: string; endereco: string;
@@ -239,6 +240,7 @@ export default function ConfiguracoesPage() {
           <button className="botao" disabled={salvando}>{salvando ? "Salvando…" : "Salvar alterações"}</button>
         </form>
 
+        <ConfigAssinatura profissional={profissional} />
         <ConfigSeguranca profissional={profissional} />
       </main>
     </>
